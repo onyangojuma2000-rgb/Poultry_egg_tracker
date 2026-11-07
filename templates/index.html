@@ -1,0 +1,309 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Egg Production Tracker</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            margin: 0;
+            padding: 30px;
+        }
+
+        .container {
+            max-width: 850px;
+            margin: auto;
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+        }
+
+        h1, h2 {
+            color: #234b35;
+        }
+
+        label {
+            display: block;
+            margin-top: 15px;
+            font-weight: bold;
+        }
+
+        input {
+            width: 100%;
+            padding: 11px;
+            margin-top: 6px;
+            box-sizing: border-box;
+        }
+
+        button {
+            background: #287747;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            margin-top: 20px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+
+        button:disabled {
+            background: gray;
+            cursor: not-allowed;
+        }
+
+        .summary {
+            background: #e9f5ec;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 5px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        th, td {
+            padding: 12px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+
+        th {
+            background: #287747;
+            color: white;
+        }
+
+        #message {
+            margin-top: 15px;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+
+            .container {
+                padding: 15px;
+                overflow-x: auto;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>Kiambu Poultry Egg Production Tracker</h1>
+
+    <h2>Record Daily Production</h2>
+
+    <form id="egg-form">
+
+        <label for="shed">Shed Name</label>
+        <input
+            type="text"
+            id="shed"
+            placeholder="e.g. Shed A"
+            required
+        >
+
+        <label for="date">Production Date</label>
+        <input
+            type="date"
+            id="date"
+            required
+        >
+
+        <label for="egg_count">Egg Count</label>
+        <input
+            type="number"
+            id="egg_count"
+            min="0"
+            step="1"
+            placeholder="Enter number of eggs"
+            required
+        >
+
+        <button type="submit" id="submit-btn">
+            Submit Record
+        </button>
+
+    </form>
+
+    <p id="message" role="status" aria-live="polite"></p>
+
+    <div class="summary">
+        <h2>Production Summary</h2>
+        <p>
+            Total Eggs Produced:
+            <strong id="total-eggs">0</strong>
+        </p>
+    </div>
+
+    <h2>Production Records</h2>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Shed</th>
+                <th>Date</th>
+                <th>Egg Count</th>
+            </tr>
+        </thead>
+
+        <tbody id="records-table">
+            <tr>
+                <td colspan="3">Loading records...</td>
+            </tr>
+        </tbody>
+    </table>
+
+</div>
+
+<script>
+
+    const form = document.getElementById("egg-form");
+    const submitBtn = document.getElementById("submit-btn");
+    const message = document.getElementById("message");
+
+    // GET request: retrieve and display all records
+    async function loadRecords() {
+
+        const table = document.getElementById("records-table");
+        const totalEggs = document.getElementById("total-eggs");
+
+        try {
+
+            const response = await fetch("/api/eggs");
+
+            if (!response.ok) {
+                throw new Error("Could not retrieve records");
+            }
+
+            const data = await response.json();
+
+            table.innerHTML = "";
+
+            if (data.records.length === 0) {
+
+                table.innerHTML = `
+                    <tr>
+                        <td colspan="3">No production records yet.</td>
+                    </tr>
+                `;
+
+            } else {
+
+                data.records.forEach(record => {
+
+                    const row = document.createElement("tr");
+
+                    [record.shed, record.date, record.egg_count]
+                        .forEach(value => {
+                            const cell = document.createElement("td");
+                            cell.textContent = value;
+                            row.appendChild(cell);
+                        });
+
+                    table.appendChild(row);
+
+                });
+
+            }
+
+            totalEggs.textContent = data.total_eggs;
+
+        } catch (error) {
+
+            table.innerHTML = `
+                <tr>
+                    <td colspan="3">Unable to load production records.</td>
+                </tr>
+            `;
+
+            message.textContent = error.message;
+
+        }
+    }
+
+
+    // POST request: submit a new production record
+    form.addEventListener("submit", async function(event) {
+
+        event.preventDefault();
+
+        const shed = document.getElementById("shed").value.trim();
+        const date = document.getElementById("date").value;
+        const eggCount = Number(
+            document.getElementById("egg_count").value
+        );
+
+        if (!shed || !date || !Number.isSafeInteger(eggCount) || eggCount < 0) {
+            message.textContent = "Please enter valid production details.";
+            return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Submitting...";
+        message.textContent = "";
+
+        try {
+
+            const response = await fetch("/api/eggs", {
+
+                method: "POST",
+
+                headers: {
+                    "Content-Type": "application/json"
+                },
+
+                body: JSON.stringify({
+                    shed: shed,
+                    date: date,
+                    egg_count: eggCount
+                })
+
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Could not save record");
+            }
+
+            message.textContent = data.message;
+
+            form.reset();
+
+            // GET request after successful POST
+            await loadRecords();
+
+        } catch (error) {
+
+            message.textContent =
+                "Something went wrong: " + error.message;
+
+        } finally {
+
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Submit Record";
+
+        }
+
+    });
+
+
+    // Load existing records when the page opens
+    loadRecords();
+
+</script>
+
+</body>
+</html>
